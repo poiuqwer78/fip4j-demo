@@ -50,7 +50,6 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
     private boolean interactiveDemoRunning = false;
 
     public DeviceDemo(Page page) {
-        LOGGER.info("Running screen demo.");
         this.page = page;
         page.getDevice().addPageChangeListener(this);
         imageBuffer = DisplayBuffer.getSuitableBufferedImage();
@@ -70,8 +69,6 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
             return;
         }
         interactiveDemoRunning = true;
-        LOGGER.info("Try the buttons on the device.");
-        LOGGER.info("Program stops if no action is performed on the device for more than 10 seconds.");
         drawButton(1, false);
         drawButton(2, false);
         drawButton(3, false);

@@ -75,7 +75,7 @@ public class Main {
 
     private static void setupDeviceForDemos(Device device) {
         numberOfDemosRunning.incrementAndGet();
-        LOGGER.info("Running demos.");
+        LOGGER.info("Running demo.");
         Page page = device.addPage();
         runDemos(page);
         numberOfDemosRunning.decrementAndGet();
