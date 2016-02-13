@@ -12,6 +12,7 @@ import java.util.Set;
 
 import static ch.poiuqwer.saitek.fip4j.Button.*;
 import static ch.poiuqwer.saitek.fip4j.LedState.*;
+import static ch.poiuqwer.saitek.fip4j.TurnDirection.*;
 import static java.awt.Color.*;
 import static java.awt.Font.*;
 
@@ -30,14 +31,15 @@ import static java.awt.Font.*;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-public class DeviceDemo implements PageChangeListener, SoftButtonListener {
+public class DeviceDemo {
     private static Logger LOGGER = LoggerFactory.getLogger(DeviceDemo.class);
 
     private static final Color TEXT_COLOR = new Color(191, 191, 191);
     private static final Color LIGHT_TEXT_COLOR = new Color(210, 210, 210);
     private static final Color VERY_DARK_GRAY = new Color(16, 16, 16);
 
-    private transient boolean waitForKey;
+    private volatile boolean waitForKey;
+    private volatile boolean blinkInProgress;
 
     private final Set<Button> toggleButtons = new HashSet<>();
     private int[] buttonYCoordinate = new int[]{3, 47, 90, 134, 177, 221};
@@ -49,9 +51,13 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
     private boolean exit = false;
     private boolean interactiveDemoRunning = false;
 
+
     public DeviceDemo(Page page) {
         this.page = page;
-        page.getDevice().addPageChangeListener(this);
+        page.onPageActivated(this::pageActivated);
+        page.onButtonPressed(this::buttonPressed);
+        page.onButtonReleased(this::buttonReleased);
+        page.onKnobTurned(this::knobTurned);
         imageBuffer = DisplayBuffer.getSuitableBufferedImage();
         g = imageBuffer.getGraphics();
     }
@@ -74,8 +80,8 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
         drawButton(3, false);
         drawButton(4, false);
         drawButton(5, false);
-        drawKnob(Knob.LEFT, 0);
-        drawKnob(Knob.RIGHT, 0);
+        drawKnob(Knob.LEFT, null);
+        drawKnob(Knob.RIGHT, null);
         drawDialog();
         waitForKey = true;
         while (waitForKey) {
@@ -171,11 +177,10 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
         g.drawString("Demo Screen by Fip4j-Core", 55, 20);
         font = new Font(MONOSPACED, PLAIN, 12);
         g.setFont(font);
-        g.drawString("Serial number: " + page.getDevice().getSerialNumber(), 55, 39);
+        g.drawString("Serial number: " + page.getDeviceSerialNumber(), 55, 39);
     }
 
     private void setup() {
-        page.addSoftButtonEventHandler(this);
         drawLayout();
         setupExitButton();
     }
@@ -219,7 +224,7 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
         g.drawString("S" + i + ">", 10, buttonYCoordinate[i - 1] + 12);
     }
 
-    private void drawKnob(Knob knob, int value) {
+    private void drawKnob(Knob knob, Button button) {
         Font font = new Font(MONOSPACED, BOLD, 14);
         g.setFont(font);
         int i = knob == Knob.LEFT ? 0 : 1;
@@ -228,12 +233,12 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
         g.drawLine(knobXCoordinate[i] + 30, 217, knobXCoordinate[i] + 30, 232);
         g.drawString("\u21b6", knobXCoordinate[i] + 8, 229);
         g.drawString("\u21b7", knobXCoordinate[i] + 38, 229);
-        if (value == knob.ccwValue) {
+        if (button == UP) {
             g.setColor(RED);
             g.drawRoundRect(knobXCoordinate[i], 217, 30, 15, 3, 3);
             g.drawString("\u21b6", knobXCoordinate[i] + 8, 229);
         }
-        if (value == knob.cwValue) {
+        if (button == DOWN) {
             g.setColor(RED);
             g.drawRoundRect(knobXCoordinate[i] + 30, 217, 30, 15, 3, 3);
             g.drawString("\u21b7", knobXCoordinate[i] + 38, 229);
@@ -241,15 +246,23 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
     }
 
     private void blink(Knob knob, Button button) {
-        drawKnob(knob, button == UP ? knob.ccwValue : knob.cwValue);
-        drawKnob(knob == Knob.LEFT ? Knob.RIGHT : Knob.LEFT, 0);
-        page.setImage(imageBuffer);
-        page.setLed(button, ON);
-        sleep(100);
-        drawKnob(Knob.LEFT, 0);
-        drawKnob(Knob.RIGHT, 0);
-        page.setImage(imageBuffer);
-        page.setLed(button, OFF);
+        if (!blinkInProgress){
+            synchronized (this) {
+                if (!blinkInProgress){
+                    blinkInProgress = true;
+                    drawKnob(knob, button);
+                    drawKnob(knob == Knob.LEFT ? Knob.RIGHT : Knob.LEFT, null);
+                    page.setImage(imageBuffer);
+                    page.setLed(button, ON);
+                    sleep(100);
+                    drawKnob(Knob.LEFT, null);
+                    drawKnob(Knob.RIGHT, null);
+                    page.setImage(imageBuffer);
+                    page.setLed(button, OFF);
+                    blinkInProgress = false;
+                }
+            }
+        }
     }
 
     private void sleep(int time) {
@@ -260,8 +273,7 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
         }
     }
 
-    @Override
-    public void pageActivated(Page page) {
+    private void pageActivated(Page page) {
         page.setImage(imageBuffer);
         for (Button button : toggleButtons) {
             page.setLed(button, ON);
@@ -269,13 +281,7 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
         page.setLed(S6, ON);
     }
 
-    @Override
-    public void pageDeactivated(Page page) {
-
-    }
-
-    @Override
-    public void buttonPressed(Button button) {
+    private void buttonPressed(Button button) {
         LOGGER.info("Button pressed: {}", button);
         if (button == S6) {
             exit = true;
@@ -297,8 +303,7 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
         }
     }
 
-    @Override
-    public void buttonReleased(Button button) {
+    private void buttonReleased(Button button) {
         LOGGER.info("Button released: {}", button);
         if (button != S6) {
             page.setLed(UP, OFF);
@@ -307,20 +312,10 @@ public class DeviceDemo implements PageChangeListener, SoftButtonListener {
         }
     }
 
-    @Override
-    public void knobTurnedClockwise(Knob knob) {
+    private void knobTurned(Knob knob, TurnDirection direction) {
         if (interactiveDemoRunning) {
-            LOGGER.info("Knob turned up: {}", knob);
-            blink(knob, DOWN);
-            waitForKey = true;
-        }
-    }
-
-    @Override
-    public void knobTurnedCounterclockwise(Knob knob) {
-        if (interactiveDemoRunning) {
-            LOGGER.info("Knob turned down: {}", knob);
-            blink(knob, UP);
+            LOGGER.info("Knob turned {}: {}", direction, knob);
+            blink(knob, direction==CLOCKWISE?DOWN:UP);
             waitForKey = true;
         }
     }

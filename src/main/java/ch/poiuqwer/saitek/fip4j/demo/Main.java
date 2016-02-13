@@ -39,17 +39,7 @@ public class Main {
                 directOutput = LibraryManager.getDirectOutput();
                 directOutput.setup(PLUGIN_NAME);
                 Collection<Device> devices = directOutput.getDevices();
-                directOutput.addDeviceChangeListener(new DeviceChangeListener() {
-                    @Override
-                    public void deviceConnected(Device device) {
-                        setupDeviceForDemos(device);
-                    }
-
-                    @Override
-                    public void deviceDisconnected(Device device) {
-
-                    }
-                });
+                directOutput.onDeviceConnected(Main::setupDeviceForDemos);
                 devices.forEach(Main::setupDeviceForDemos);
                 if (devices.isEmpty()) {
                     int seconds = 0;
