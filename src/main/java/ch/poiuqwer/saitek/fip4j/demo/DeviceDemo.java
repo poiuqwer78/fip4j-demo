@@ -1,7 +1,9 @@
 package ch.poiuqwer.saitek.fip4j.demo;
 
-import ch.poiuqwer.saitek.fip4j.*;
 import ch.poiuqwer.saitek.fip4j.Button;
+import ch.poiuqwer.saitek.fip4j.*;
+import com.google.common.eventbus.AllowConcurrentEvents;
+import com.google.common.eventbus.Subscribe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,8 +13,9 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static ch.poiuqwer.saitek.fip4j.Button.*;
-import static ch.poiuqwer.saitek.fip4j.LedState.*;
-import static ch.poiuqwer.saitek.fip4j.TurnDirection.*;
+import static ch.poiuqwer.saitek.fip4j.KnobState.TURNED_CLOCKWISE;
+import static ch.poiuqwer.saitek.fip4j.LedState.OFF;
+import static ch.poiuqwer.saitek.fip4j.LedState.ON;
 import static java.awt.Color.*;
 import static java.awt.Font.*;
 
@@ -31,33 +34,34 @@ import static java.awt.Font.*;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@SuppressWarnings("unused")
 public class DeviceDemo {
     private static Logger LOGGER = LoggerFactory.getLogger(DeviceDemo.class);
 
     private static final Color TEXT_COLOR = new Color(191, 191, 191);
     private static final Color LIGHT_TEXT_COLOR = new Color(210, 210, 210);
     private static final Color VERY_DARK_GRAY = new Color(16, 16, 16);
+    private static final int[] buttonYCoordinate = new int[]{3, 47, 90, 134, 177, 221};
+    private static final int[] knobXCoordinate = new int[]{80, 217};
 
     private volatile boolean waitForKey;
     private volatile boolean blinkInProgress;
 
     private final Set<Button> toggleButtons = new HashSet<>();
-    private int[] buttonYCoordinate = new int[]{3, 47, 90, 134, 177, 221};
-    private int[] knobXCoordinate = new int[]{80, 217};
-
     private final Page page;
-    private BufferedImage imageBuffer;
-    private Graphics g;
+    private final Device device;
+    private final BufferedImage imageBuffer;
+    private final Graphics g;
+
     private boolean exit = false;
     private boolean interactiveDemoRunning = false;
 
 
     public DeviceDemo(Page page) {
         this.page = page;
-        page.onPageActivated(this::pageActivated);
-        page.onButtonPressed(this::buttonPressed);
-        page.onButtonReleased(this::buttonReleased);
-        page.onKnobTurned(this::knobTurned);
+        this.device = page.getDevice();
+        DirectOutput directOutput = page.getDirectOutput();
+        directOutput.registerSubscriber(this);
         imageBuffer = DisplayBuffer.getSuitableBufferedImage();
         g = imageBuffer.getGraphics();
     }
@@ -177,7 +181,7 @@ public class DeviceDemo {
         g.drawString("Demo Screen by Fip4j-Core", 55, 20);
         font = new Font(MONOSPACED, PLAIN, 12);
         g.setFont(font);
-        g.drawString("Serial number: " + page.getDeviceSerialNumber(), 55, 39);
+        g.drawString("Serial number: " + device.getSerialNumber(), 55, 39);
     }
 
     private void setup() {
@@ -246,9 +250,9 @@ public class DeviceDemo {
     }
 
     private void blink(Knob knob, Button button) {
-        if (!blinkInProgress){
+        if (!blinkInProgress) {
             synchronized (this) {
-                if (!blinkInProgress){
+                if (!blinkInProgress) {
                     blinkInProgress = true;
                     drawKnob(knob, button);
                     drawKnob(knob == Knob.LEFT ? Knob.RIGHT : Knob.LEFT, null);
@@ -273,12 +277,26 @@ public class DeviceDemo {
         }
     }
 
-    private void pageActivated(Page page) {
-        page.setImage(imageBuffer);
-        for (Button button : toggleButtons) {
-            page.setLed(button, ON);
+    @Subscribe
+    @AllowConcurrentEvents
+    public void onPageChange(PageEvent event) {
+        if (event.state == PageState.ACTIVE) {
+            page.setImage(imageBuffer);
+            for (Button button : toggleButtons) {
+                page.setLed(button, ON);
+            }
+            page.setLed(S6, ON);
         }
-        page.setLed(S6, ON);
+    }
+
+    @Subscribe
+    @AllowConcurrentEvents
+    public void onButtonChange(ButtonEvent event) {
+        if (event.state == ButtonState.PRESSED) {
+            buttonPressed(event.button);
+        } else {
+            buttonReleased(event.button);
+        }
     }
 
     private void buttonPressed(Button button) {
@@ -312,10 +330,12 @@ public class DeviceDemo {
         }
     }
 
-    private void knobTurned(Knob knob, TurnDirection direction) {
+    @Subscribe
+    @AllowConcurrentEvents
+    public void onKnobChange(KnobEvent event) {
         if (interactiveDemoRunning) {
-            LOGGER.info("Knob turned {}: {}", direction, knob);
-            blink(knob, direction==CLOCKWISE?DOWN:UP);
+            LOGGER.info("Knob turned {}: {}", event.state, event.knob);
+            blink(event.knob, event.state == TURNED_CLOCKWISE ? DOWN : UP);
             waitForKey = true;
         }
     }

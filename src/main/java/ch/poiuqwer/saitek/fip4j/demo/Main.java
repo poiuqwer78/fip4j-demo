@@ -1,11 +1,17 @@
 package ch.poiuqwer.saitek.fip4j.demo;
 
 import ch.poiuqwer.saitek.fip4j.*;
+import com.google.common.eventbus.AllowConcurrentEvents;
+import com.google.common.eventbus.AsyncEventBus;
+import com.google.common.eventbus.Subscribe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static ch.poiuqwer.saitek.fip4j.DeviceState.*;
 
 /**
  * Copyright 2015 Hermann Lehner
@@ -22,35 +28,41 @@ import java.util.concurrent.atomic.AtomicInteger;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@SuppressWarnings("unused")
 public class Main {
 
     public static final String PLUGIN_NAME = "Saitek-FIP4j";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
 
-    private static DirectOutput directOutput = null;
+    private DirectOutput directOutput = null;
 
-    private static AtomicInteger numberOfDemosRunning = new AtomicInteger(0);
+    private AtomicInteger numberOfDemosRunning = new AtomicInteger(0);
 
     public static void main(String[] args) {
+        new Main().run();
+    }
+
+    private void run() {
         try {
             LOGGER.info("Starting {}.", PLUGIN_NAME);
-            if (LibraryManager.loadLibrary()) {
-                directOutput = LibraryManager.getDirectOutput();
-                directOutput.setup(PLUGIN_NAME);
-                Collection<Device> devices = directOutput.getDevices();
-                directOutput.onDeviceConnected(Main::setupDeviceForDemos);
-                devices.forEach(Main::setupDeviceForDemos);
-                if (devices.isEmpty()) {
-                    int seconds = 0;
-                    LOGGER.info("Waiting 30 seconds for devices to be plugged in ...");
-                    while (directOutput.getDevices().isEmpty() && seconds++ < 30) {
-                        Thread.sleep(1000);
-                    }
-                }
-                while (numberOfDemosRunning.get() > 0) {
+            directOutput = DirectOutputBuilder
+                    .createAndLoadDLL()
+                    .eventBus(new AsyncEventBus(new ForkJoinPool()))
+                    .build();
+            directOutput.setup(PLUGIN_NAME);
+            Collection<Device> devices = directOutput.getDevices();
+            directOutput.registerSubscriber(this);
+            devices.forEach(this::setupDeviceForDemos);
+            if (devices.isEmpty()) {
+                int seconds = 0;
+                LOGGER.info("Waiting 30 seconds for devices to be plugged in ...");
+                while (directOutput.getDevices().isEmpty() && seconds++ < 30) {
                     Thread.sleep(1000);
                 }
+            }
+            while (numberOfDemosRunning.get() > 0) {
+                Thread.sleep(1000);
             }
         } catch (Throwable t) {
             logUnexpectedError(t);
@@ -59,11 +71,19 @@ public class Main {
         }
     }
 
-    private static void logUnexpectedError(Throwable t) {
+    private void logUnexpectedError(Throwable t) {
         LOGGER.error("Awww, unexpected error.", t);
     }
 
-    private static void setupDeviceForDemos(Device device) {
+    @Subscribe
+    @AllowConcurrentEvents
+    public void onDeviceChange(DeviceEvent event) {
+        if (event.state == CONNECTED) {
+            setupDeviceForDemos(event.device);
+        }
+    }
+
+    private void setupDeviceForDemos(Device device) {
         numberOfDemosRunning.incrementAndGet();
         LOGGER.info("Running demo.");
         Page page = device.addPage();
@@ -71,7 +91,8 @@ public class Main {
         numberOfDemosRunning.decrementAndGet();
     }
 
-    private static void runDemos(Page page) {
+    private void runDemos(Page page) {
         new DeviceDemo(page).run();
     }
+
 }
