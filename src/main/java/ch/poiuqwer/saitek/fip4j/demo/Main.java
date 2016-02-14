@@ -78,8 +78,8 @@ public class Main {
     @Subscribe
     @AllowConcurrentEvents
     public void onDeviceChange(DeviceEvent event) {
-        if (event.state == CONNECTED) {
-            setupDeviceForDemos(event.device);
+        if (event.isConnected()) {
+            setupDeviceForDemos(event.getDevice());
         }
     }
 

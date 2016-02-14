@@ -13,7 +13,6 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static ch.poiuqwer.saitek.fip4j.Button.*;
-import static ch.poiuqwer.saitek.fip4j.KnobState.TURNED_CLOCKWISE;
 import static ch.poiuqwer.saitek.fip4j.LedState.OFF;
 import static ch.poiuqwer.saitek.fip4j.LedState.ON;
 import static java.awt.Color.*;
@@ -60,8 +59,7 @@ public class DeviceDemo {
     public DeviceDemo(Page page) {
         this.page = page;
         this.device = page.getDevice();
-        DirectOutput directOutput = page.getDirectOutput();
-        directOutput.registerSubscriber(this);
+        page.getDirectOutput().registerSubscriber(this);
         imageBuffer = DisplayBuffer.getSuitableBufferedImage();
         g = imageBuffer.getGraphics();
     }
@@ -280,7 +278,7 @@ public class DeviceDemo {
     @Subscribe
     @AllowConcurrentEvents
     public void onPageChange(PageEvent event) {
-        if (event.state == PageState.ACTIVE) {
+        if (event.isRelevantFor(page) && event.isActive()) {
             page.setImage(imageBuffer);
             for (Button button : toggleButtons) {
                 page.setLed(button, ON);
@@ -292,10 +290,13 @@ public class DeviceDemo {
     @Subscribe
     @AllowConcurrentEvents
     public void onButtonChange(ButtonEvent event) {
-        if (event.state == ButtonState.PRESSED) {
-            buttonPressed(event.button);
-        } else {
-            buttonReleased(event.button);
+        if (event.isRelevantFor(page)) {
+            Button button = event.getButton();
+            if (event.isPressed()) {
+                buttonPressed(button);
+            } else {
+                buttonReleased(button);
+            }
         }
     }
 
@@ -333,9 +334,9 @@ public class DeviceDemo {
     @Subscribe
     @AllowConcurrentEvents
     public void onKnobChange(KnobEvent event) {
-        if (interactiveDemoRunning) {
-            LOGGER.info("Knob turned {}: {}", event.state, event.knob);
-            blink(event.knob, event.state == TURNED_CLOCKWISE ? DOWN : UP);
+        if (event.isRelevantFor(page) && interactiveDemoRunning) {
+            LOGGER.info("Knob turned {}clockwise: {}", (event.isTurnedCounterclockwise() ? "counter" : ""), event.getKnob());
+            blink(event.getKnob(), event.isTurnedClockwise() ? DOWN : UP);
             waitForKey = true;
         }
     }
